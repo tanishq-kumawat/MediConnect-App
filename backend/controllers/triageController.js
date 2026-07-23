@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import Doctor from '../models/Doctor.js';
+import { prisma } from '../config/db.js';
 
 // Helper for fallback rule-based triage if Gemini API is unavailable or fails
 const fallbackRuleTriage = (text) => {
@@ -77,8 +77,6 @@ export const handleSymptomTriage = async (req, res) => {
     if (apiKey && apiKey.trim() !== '') {
       try {
         const genAI = new GoogleGenerativeAI(apiKey.trim());
-        
-        // Try gemini models in order of preference
         const modelNames = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
         let geminiResponse = null;
 
@@ -140,12 +138,10 @@ Patient Symptoms: "${message}"`;
       }
     }
 
-    // If Gemini was not configured or failed, use fallback rule triage
     if (!triageResult) {
       triageResult = fallbackRuleTriage(message.toLowerCase());
     }
 
-    // Determine emergency payload
     if (triageResult.isEmergency) {
       return res.json({
         isEmergency: true,
@@ -157,26 +153,39 @@ Patient Symptoms: "${message}"`;
       });
     }
 
-    // Query matching Jaipur doctors from DB
     const specNeeded = triageResult.specializationNeeded || 'General Physician';
-    const doctors = await Doctor.find({ specialization: specNeeded })
-      .populate('hospital', 'name locality city')
-      .limit(3);
+    const doctors = await prisma.doctor.findMany({
+      where: { specialization: specNeeded },
+      include: {
+        hospital: { select: { id: true, name: true, locality: true, city: true } }
+      },
+      take: 3
+    });
 
     let finalDoctors = doctors;
     if (doctors.length < 3) {
-      const additional = await Doctor.find({ specialization: { $ne: specNeeded } })
-        .populate('hospital', 'name locality city')
-        .limit(3 - doctors.length);
+      const additional = await prisma.doctor.findMany({
+        where: { specialization: { not: specNeeded } },
+        include: {
+          hospital: { select: { id: true, name: true, locality: true, city: true } }
+        },
+        take: 3 - doctors.length
+      });
       finalDoctors = [...doctors, ...additional];
     }
+
+    const formattedDoctors = finalDoctors.map((d) => ({
+      ...d,
+      _id: d.id,
+      hospital: d.hospital ? { ...d.hospital, _id: d.hospital.id } : null
+    }));
 
     return res.json({
       isEmergency: false,
       specializationNeeded: specNeeded,
       guidance: triageResult.guidance,
       disclaimer: `⚠️ Note: This AI Triage Assistant (${usedGemini ? 'Powered by Gemini AI' : 'Rule Engine'}) provides informational guidance only and is not a substitute for professional medical diagnosis.`,
-      doctors: finalDoctors,
+      doctors: formattedDoctors,
       source: usedGemini ? 'Gemini AI' : 'Rule Engine'
     });
 

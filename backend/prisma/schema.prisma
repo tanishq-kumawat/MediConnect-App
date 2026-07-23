@@ -1,0 +1,98 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  patient
+  doctor
+  admin
+}
+
+model User {
+  id             String        @id @default(uuid())
+  name           String
+  email          String        @unique
+  password       String
+  phone          String        @default("")
+  role           Role          @default(patient)
+  medicalHistory Json          @default("[]")
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  appointments   Appointment[]
+}
+
+model Hospital {
+  id             String        @id @default(uuid())
+  name           String
+  address        String
+  locality       String
+  city           String        @default("Jaipur")
+  contactPhone   String
+  emergencyPhone String        @default("108")
+  departments    String[]      @default([])
+  imageUrl       String        @default("")
+  rating         Float         @default(4.8)
+  googleMapQuery String        @default("")
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  doctors        Doctor[]
+  appointments   Appointment[]
+}
+
+model Doctor {
+  id                String        @id @default(uuid())
+  name              String
+  specialization    String
+  hospitalId        String
+  hospital          Hospital      @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  consultationFee   Float
+  consultationTypes String[]      @default(["Both"])
+  availabilitySlots Json          @default("[]")
+  rating            Float         @default(4.8)
+  experienceYears   Int           @default(10)
+  imageUrl          String
+  bio               String        @default("")
+  qualification     String        @default("MBBS, MD")
+  email             String        @default("")
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  appointments      Appointment[]
+}
+
+enum AppointmentStatus {
+  Pending
+  Confirmed
+  Cancelled
+  Completed
+}
+
+enum AppointmentType {
+  Online
+  Offline
+}
+
+model Appointment {
+  id            String            @id @default(uuid())
+  patientId     String
+  patient       User              @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId      String
+  doctor        Doctor            @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  hospitalId    String
+  hospital      Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  date          String
+  timeslot      String
+  status        AppointmentStatus @default(Pending)
+  type          AppointmentType
+  feePaid       Boolean           @default(false)
+  feeAmount     Float
+  transactionId String            @default("")
+  symptomsNotes String            @default("")
+  chatHistory   Json              @default("[]")
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+}

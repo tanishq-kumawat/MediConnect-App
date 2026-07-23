@@ -4,7 +4,7 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
-import { connectDB } from './config/db.js';
+import { connectDB, prisma } from './config/db.js';
 import { setupSocketHandlers } from './sockets/socketHandler.js';
 import { seedDatabase } from './seed/seedData.js';
 
@@ -14,8 +14,6 @@ import hospitalRoutes from './routes/hospitalRoutes.js';
 import appointmentRoutes from './routes/appointmentRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
 import triageRoutes from './routes/triageRoutes.js';
-
-import Doctor from './models/Doctor.js';
 
 dotenv.config();
 
@@ -49,7 +47,7 @@ app.use('/api/webhooks', webhookRoutes);
 app.use('/api/triage', triageRoutes);
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'Jaipur MediConnect API', time: new Date().toISOString() });
+  res.json({ status: 'ok', service: 'Jaipur MediConnect API (PostgreSQL)', time: new Date().toISOString() });
 });
 
 // Setup Socket.io Event Listeners
@@ -60,13 +58,13 @@ const PORT = process.env.PORT || 5000;
 // Connect DB & auto-seed if empty
 connectDB().then(async () => {
   try {
-    const doctorCount = await Doctor.countDocuments();
+    const doctorCount = await prisma.doctor.count();
     if (doctorCount === 0) {
       console.log('Database empty on startup. Triggering auto-seed...');
       await seedDatabase();
     }
   } catch (err) {
-    console.error('Error during auto-seed check:', err);
+    console.error('Error during auto-seed check:', err.message);
   }
 
   server.listen(PORT, () => {

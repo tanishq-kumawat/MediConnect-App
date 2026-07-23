@@ -1,37 +1,58 @@
-import Doctor from '../models/Doctor.js';
+import { prisma } from '../config/db.js';
 
 export const getDoctors = async (req, res) => {
   try {
     const { specialization, maxFee, hospitalId, consultationType, search } = req.query;
 
-    let filter = {};
+    let whereClause = {};
 
     if (specialization && specialization !== 'All') {
-      filter.specialization = specialization;
+      whereClause.specialization = specialization;
     }
 
     if (maxFee) {
-      filter.consultationFee = { $lte: Number(maxFee) };
+      whereClause.consultationFee = { lte: Number(maxFee) };
     }
 
     if (hospitalId) {
-      filter.hospital = hospitalId;
+      whereClause.hospitalId = hospitalId;
     }
 
     if (consultationType && consultationType !== 'All') {
-      filter.consultationTypes = { $in: [consultationType, 'Both'] };
+      whereClause.consultationTypes = { hasSome: [consultationType, 'Both'] };
     }
 
     if (search) {
-      filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { specialization: { $regex: search, $options: 'i' } },
-        { bio: { $regex: search, $options: 'i' } }
+      whereClause.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { specialization: { contains: search, mode: 'insensitive' } },
+        { bio: { contains: search, mode: 'insensitive' } }
       ];
     }
 
-    const doctors = await Doctor.find(filter).populate('hospital', 'name address locality city rating');
-    res.json(doctors);
+    const doctors = await prisma.doctor.findMany({
+      where: whereClause,
+      include: {
+        hospital: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            locality: true,
+            city: true,
+            rating: true
+          }
+        }
+      }
+    });
+
+    const formattedDoctors = doctors.map((d) => ({
+      ...d,
+      _id: d.id,
+      hospital: d.hospital ? { ...d.hospital, _id: d.hospital.id } : null
+    }));
+
+    res.json(formattedDoctors);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -39,9 +60,17 @@ export const getDoctors = async (req, res) => {
 
 export const getDoctorById = async (req, res) => {
   try {
-    const doctor = await Doctor.findById(req.params.id).populate('hospital');
+    const doctor = await prisma.doctor.findUnique({
+      where: { id: req.params.id },
+      include: { hospital: true }
+    });
+
     if (doctor) {
-      res.json(doctor);
+      res.json({
+        ...doctor,
+        _id: doctor.id,
+        hospital: doctor.hospital ? { ...doctor.hospital, _id: doctor.hospital.id } : null
+      });
     } else {
       res.status(404).json({ message: 'Doctor not found' });
     }

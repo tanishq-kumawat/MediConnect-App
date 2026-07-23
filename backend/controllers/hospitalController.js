@@ -1,12 +1,30 @@
-import Hospital from '../models/Hospital.js';
+import { prisma } from '../config/db.js';
 
 export const getHospitals = async (req, res) => {
   try {
-    const hospitals = await Hospital.find({}).populate({
-      path: 'doctors',
-      select: 'name specialization consultationFee rating imageUrl qualification'
+    const hospitals = await prisma.hospital.findMany({
+      include: {
+        doctors: {
+          select: {
+            id: true,
+            name: true,
+            specialization: true,
+            consultationFee: true,
+            rating: true,
+            imageUrl: true,
+            qualification: true
+          }
+        }
+      }
     });
-    res.json(hospitals);
+
+    const formatted = hospitals.map((h) => ({
+      ...h,
+      _id: h.id,
+      doctors: h.doctors.map((d) => ({ ...d, _id: d.id }))
+    }));
+
+    res.json(formatted);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -14,9 +32,17 @@ export const getHospitals = async (req, res) => {
 
 export const getHospitalById = async (req, res) => {
   try {
-    const hospital = await Hospital.findById(req.params.id).populate('doctors');
+    const hospital = await prisma.hospital.findUnique({
+      where: { id: req.params.id },
+      include: { doctors: true }
+    });
+
     if (hospital) {
-      res.json(hospital);
+      res.json({
+        ...hospital,
+        _id: hospital.id,
+        doctors: hospital.doctors.map((d) => ({ ...d, _id: d.id }))
+      });
     } else {
       res.status(404).json({ message: 'Hospital not found' });
     }

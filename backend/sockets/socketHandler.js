@@ -1,4 +1,4 @@
-import Appointment from '../models/Appointment.js';
+import { prisma } from '../config/db.js';
 
 export const setupSocketHandlers = (io) => {
   io.on('connection', (socket) => {
@@ -11,7 +11,7 @@ export const setupSocketHandlers = (io) => {
       console.log(`User ${userId} joined room ${room}`);
 
       try {
-        const appointment = await Appointment.findById(appointmentId);
+        const appointment = await prisma.appointment.findUnique({ where: { id: appointmentId } });
         if (appointment) {
           socket.emit('load_chat_history', appointment.chatHistory || []);
         }
@@ -23,7 +23,7 @@ export const setupSocketHandlers = (io) => {
     // Handle incoming chat message in consultation room
     socket.on('send_chat_message', async ({ appointmentId, senderRole, senderName, message }) => {
       try {
-        const appointment = await Appointment.findById(appointmentId);
+        const appointment = await prisma.appointment.findUnique({ where: { id: appointmentId } });
         if (appointment) {
           const chatMsg = {
             senderRole,
@@ -32,8 +32,13 @@ export const setupSocketHandlers = (io) => {
             timestamp: new Date()
           };
 
-          appointment.chatHistory.push(chatMsg);
-          await appointment.save();
+          const currentHistory = Array.isArray(appointment.chatHistory) ? appointment.chatHistory : [];
+          const updatedHistory = [...currentHistory, chatMsg];
+
+          await prisma.appointment.update({
+            where: { id: appointmentId },
+            data: { chatHistory: updatedHistory }
+          });
 
           const room = `appointment_${appointmentId}`;
           io.to(room).emit('receive_chat_message', chatMsg);

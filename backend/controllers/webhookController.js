@@ -1,4 +1,4 @@
-import Appointment from '../models/Appointment.js';
+import { prisma } from '../config/db.js';
 
 export const handlePaymentWebhook = async (req, res) => {
   try {
@@ -7,44 +7,56 @@ export const handlePaymentWebhook = async (req, res) => {
     console.log(`[PAYMENT WEBHOOK RECEIVED] Event: ${event}`, data);
 
     if (event === 'payment_intent.succeeded' || event === 'payment.success') {
-      const { appointmentId, transactionId, amountPaid } = data;
+      const { appointmentId, transactionId } = data;
 
-      const appointment = await Appointment.findById(appointmentId)
-        .populate('doctor')
-        .populate('hospital')
-        .populate('patient', 'name email');
+      const appointment = await prisma.appointment.findUnique({
+        where: { id: appointmentId },
+        include: {
+          doctor: true,
+          hospital: true,
+          patient: { select: { id: true, name: true, email: true } }
+        }
+      });
 
       if (!appointment) {
         return res.status(404).json({ success: false, message: 'Appointment not found' });
       }
 
-      appointment.status = 'Confirmed';
-      appointment.feePaid = true;
-      appointment.transactionId = transactionId || `TXN_JAIPUR_${Date.now()}`;
-      await appointment.save();
+      const updated = await prisma.appointment.update({
+        where: { id: appointmentId },
+        data: {
+          status: 'Confirmed',
+          feePaid: true,
+          transactionId: transactionId || `TXN_JAIPUR_${Date.now()}`
+        },
+        include: {
+          doctor: true,
+          hospital: true,
+          patient: { select: { id: true, name: true, email: true } }
+        }
+      });
 
-      // Emit WebSocket alerts to connected clients
       if (req.io) {
         req.io.to(`appointment_${appointmentId}`).emit('payment_confirmed', {
           appointmentId,
-          transactionId: appointment.transactionId,
+          transactionId: updated.transactionId,
           status: 'Confirmed',
           message: 'Payment received successfully! Appointment confirmed.'
         });
 
         req.io.emit('user_notification', {
-          userId: appointment.patient._id,
+          userId: updated.patient.id,
           title: 'Payment Successful',
-          message: `Your appointment with Dr. ${appointment.doctor.name} on ${appointment.date} at ${appointment.timeslot} has been CONFIRMED.`,
-          appointmentId: appointment._id
+          message: `Your appointment with Dr. ${updated.doctor.name} on ${updated.date} at ${updated.timeslot} has been CONFIRMED.`,
+          appointmentId: updated.id
         });
       }
 
       return res.json({
         success: true,
         message: 'Webhook processed successfully. Appointment confirmed.',
-        appointmentId: appointment._id,
-        status: appointment.status
+        appointmentId: updated.id,
+        status: updated.status
       });
     }
 

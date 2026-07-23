@@ -1,34 +1,49 @@
-import Appointment from '../models/Appointment.js';
-import Doctor from '../models/Doctor.js';
+import { prisma } from '../config/db.js';
 
 export const createAppointment = async (req, res) => {
   try {
     const { doctorId, date, timeslot, type, symptomsNotes } = req.body;
+    const userId = req.user._id || req.user.id;
 
-    const doctor = await Doctor.findById(doctorId).populate('hospital');
+    const doctor = await prisma.doctor.findUnique({
+      where: { id: doctorId },
+      include: { hospital: true }
+    });
+
     if (!doctor) {
       return res.status(404).json({ message: 'Doctor not found' });
     }
 
-    const appointment = await Appointment.create({
-      patient: req.user._id,
-      doctor: doctor._id,
-      hospital: doctor.hospital._id,
-      date,
-      timeslot,
-      type,
-      feeAmount: doctor.consultationFee,
-      feePaid: false,
-      status: 'Pending',
-      symptomsNotes: symptomsNotes || ''
+    const appointment = await prisma.appointment.create({
+      data: {
+        patientId: userId,
+        doctorId: doctor.id,
+        hospitalId: doctor.hospitalId,
+        date,
+        timeslot,
+        type,
+        feeAmount: doctor.consultationFee,
+        feePaid: false,
+        status: 'Pending',
+        symptomsNotes: symptomsNotes || '',
+        chatHistory: []
+      },
+      include: {
+        doctor: { include: { hospital: true } },
+        hospital: true,
+        patient: { select: { id: true, name: true, email: true, phone: true } }
+      }
     });
 
-    const populatedAppointment = await Appointment.findById(appointment._id)
-      .populate('doctor')
-      .populate('hospital')
-      .populate('patient', 'name email phone');
+    const formatted = {
+      ...appointment,
+      _id: appointment.id,
+      patient: { ...appointment.patient, _id: appointment.patient.id },
+      doctor: { ...appointment.doctor, _id: appointment.doctor.id, hospital: { ...appointment.doctor.hospital, _id: appointment.doctor.hospital.id } },
+      hospital: { ...appointment.hospital, _id: appointment.hospital.id }
+    };
 
-    res.status(201).json(populatedAppointment);
+    res.status(201).json(formatted);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -36,15 +51,26 @@ export const createAppointment = async (req, res) => {
 
 export const getMyAppointments = async (req, res) => {
   try {
-    const appointments = await Appointment.find({ patient: req.user._id })
-      .populate({
-        path: 'doctor',
-        populate: { path: 'hospital', select: 'name locality address' }
-      })
-      .populate('hospital')
-      .sort({ createdAt: -1 });
+    const userId = req.user._id || req.user.id;
+    const appointments = await prisma.appointment.findMany({
+      where: { patientId: userId },
+      include: {
+        doctor: { include: { hospital: true } },
+        hospital: true,
+        patient: { select: { id: true, name: true, email: true, phone: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
 
-    res.json(appointments);
+    const formatted = appointments.map((a) => ({
+      ...a,
+      _id: a.id,
+      patient: { ...a.patient, _id: a.patient.id },
+      doctor: { ...a.doctor, _id: a.doctor.id, hospital: { ...a.doctor.hospital, _id: a.doctor.hospital.id } },
+      hospital: { ...a.hospital, _id: a.hospital.id }
+    }));
+
+    res.json(formatted);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -53,12 +79,25 @@ export const getMyAppointments = async (req, res) => {
 export const getDoctorAppointments = async (req, res) => {
   try {
     const { doctorId } = req.params;
-    const appointments = await Appointment.find({ doctor: doctorId })
-      .populate('patient', 'name email phone medicalHistory')
-      .populate('hospital')
-      .sort({ date: 1, timeslot: 1 });
+    const appointments = await prisma.appointment.findMany({
+      where: { doctorId },
+      include: {
+        patient: { select: { id: true, name: true, email: true, phone: true, medicalHistory: true } },
+        hospital: true,
+        doctor: true
+      },
+      orderBy: [{ date: 'asc' }, { timeslot: 'asc' }]
+    });
 
-    res.json(appointments);
+    const formatted = appointments.map((a) => ({
+      ...a,
+      _id: a.id,
+      patient: { ...a.patient, _id: a.patient.id },
+      doctor: { ...a.doctor, _id: a.doctor.id },
+      hospital: { ...a.hospital, _id: a.hospital.id }
+    }));
+
+    res.json(formatted);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -69,20 +108,29 @@ export const updateAppointmentStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    const appointment = await Appointment.findById(id);
+    const appointment = await prisma.appointment.findUnique({ where: { id } });
     if (!appointment) {
       return res.status(404).json({ message: 'Appointment not found' });
     }
 
-    appointment.status = status;
-    await appointment.save();
+    const updated = await prisma.appointment.update({
+      where: { id },
+      data: { status },
+      include: {
+        doctor: true,
+        hospital: true,
+        patient: { select: { id: true, name: true, email: true } }
+      }
+    });
 
-    const updated = await Appointment.findById(id)
-      .populate('doctor')
-      .populate('hospital')
-      .populate('patient', 'name email');
+    const formatted = {
+      ...updated,
+      _id: updated.id,
+      patient: { ...updated.patient, _id: updated.patient.id },
+      doctor: { ...updated.doctor, _id: updated.doctor.id },
+      hospital: { ...updated.hospital, _id: updated.hospital.id }
+    };
 
-    // Notify via Socket.io if IO attached to req
     if (req.io) {
       req.io.to(`appointment_${id}`).emit('appointment_status_changed', {
         appointmentId: id,
@@ -91,12 +139,12 @@ export const updateAppointmentStatus = async (req, res) => {
       });
       req.io.emit('global_appointment_update', {
         appointmentId: id,
-        patientId: updated.patient._id,
+        patientId: updated.patientId,
         status: updated.status
       });
     }
 
-    res.json(updated);
+    res.json(formatted);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -104,16 +152,28 @@ export const updateAppointmentStatus = async (req, res) => {
 
 export const getAppointmentById = async (req, res) => {
   try {
-    const appointment = await Appointment.findById(req.params.id)
-      .populate('doctor')
-      .populate('hospital')
-      .populate('patient', 'name email phone medicalHistory');
+    const appointment = await prisma.appointment.findUnique({
+      where: { id: req.params.id },
+      include: {
+        doctor: { include: { hospital: true } },
+        hospital: true,
+        patient: { select: { id: true, name: true, email: true, phone: true, medicalHistory: true } }
+      }
+    });
 
     if (!appointment) {
       return res.status(404).json({ message: 'Appointment not found' });
     }
 
-    res.json(appointment);
+    const formatted = {
+      ...appointment,
+      _id: appointment.id,
+      patient: { ...appointment.patient, _id: appointment.patient.id },
+      doctor: { ...appointment.doctor, _id: appointment.doctor.id, hospital: { ...appointment.doctor.hospital, _id: appointment.doctor.hospital.id } },
+      hospital: { ...appointment.hospital, _id: appointment.hospital.id }
+    };
+
+    res.json(formatted);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
