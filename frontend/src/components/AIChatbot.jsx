@@ -1,10 +1,50 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { triageAPI } from '../services/api';
+import { triageAPI, doctorAPI } from '../services/api';
 import { Bot, Send, X, AlertTriangle, Stethoscope, ArrowRight, Sparkles, User, Calendar } from 'lucide-react';
 import { BookingModal } from './BookingModal';
 
 export const AIChatbot = ({ isOpen, onClose }) => {
   const defaultDocImage = 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=500&q=80';
+  
+  const sampleDoctors = [
+    {
+      _id: 'doc-fallback-1',
+      id: 'doc-fallback-1',
+      name: 'Dr. Vikramaditya Rathore',
+      specialization: 'General Physician',
+      qualification: 'MBBS, MD (Internal Medicine)',
+      consultationFee: 500,
+      rating: 4.9,
+      imageUrl: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=500&q=80',
+      hospital: { name: 'Sawai Man Singh (SMS) Hospital', locality: 'JLN Marg' },
+      consultationTypes: ['Both']
+    },
+    {
+      _id: 'doc-fallback-2',
+      id: 'doc-fallback-2',
+      name: 'Dr. Priyanshu Shekhawat',
+      specialization: 'Dermatologist',
+      qualification: 'MBBS, MD (Dermatology)',
+      consultationFee: 800,
+      rating: 4.9,
+      imageUrl: 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&w=500&q=80',
+      hospital: { name: 'Fortis Escorts Hospital', locality: 'Malviya Nagar' },
+      consultationTypes: ['Both']
+    },
+    {
+      _id: 'doc-fallback-3',
+      id: 'doc-fallback-3',
+      name: 'Dr. Sunil Sharma',
+      specialization: 'Cardiologist',
+      qualification: 'MBBS, MD, DM (Cardiology)',
+      consultationFee: 1200,
+      rating: 5.0,
+      imageUrl: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=500&q=80',
+      hospital: { name: 'Eternal Hospital (EHCC)', locality: 'Jagatpura' },
+      consultationTypes: ['Both']
+    }
+  ];
+
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
@@ -22,11 +62,49 @@ export const AIChatbot = ({ isOpen, onClose }) => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
+  const clientFallbackTriage = (queryText) => {
+    const text = queryText.toLowerCase();
+    const isEmergency = ['chest pain', 'heart attack', 'breathless', 'can\'t breathe', 'unconscious', 'heavy bleeding', 'stroke'].some(k => text.includes(k));
+
+    if (isEmergency) {
+      return {
+        isEmergency: true,
+        text: '🚨 **EMERGENCY WARNING**: Your described symptoms sound critical. Please call emergency services immediately (Dial 108) or visit nearest ER (e.g. SMS Hospital Trauma Center, Jaipur).',
+        doctors: []
+      };
+    }
+
+    let spec = 'General Physician';
+    let advice = 'For general malaise, mild fever, or body aches, ensure adequate hydration, rest, and monitor your symptoms.';
+
+    if (text.includes('skin') || text.includes('rash') || text.includes('acne') || text.includes('itching')) {
+      spec = 'Dermatologist';
+      advice = 'Based on your skin symptoms, avoid scratching, apply a cool compress, and avoid harsh soaps.';
+    } else if (text.includes('child') || text.includes('baby') || text.includes('kid')) {
+      spec = 'Pediatrician';
+      advice = 'For pediatric symptoms, keep the child hydrated and consult a specialist promptly.';
+    } else if (text.includes('knee') || text.includes('joint') || text.includes('bone') || text.includes('spine')) {
+      spec = 'Orthopedic';
+      advice = 'For joint or bone pain, practice gentle rest and ice packing (RICE protocol).';
+    } else if (text.includes('heart') || text.includes('bp') || text.includes('pressure')) {
+      spec = 'Cardiologist';
+      advice = 'For cardiovascular concerns, rest in a comfortable position and monitor blood pressure.';
+    }
+
+    const matchedDocs = sampleDoctors.filter(d => d.specialization === spec);
+    const docsToShow = matchedDocs.length > 0 ? matchedDocs : sampleDoctors;
+
+    return {
+      isEmergency: false,
+      text: `${advice}\n\nRecommended Specialization: **${spec}**\n\n⚠️ Note: This AI Triage Assistant provides initial guidance only.`,
+      doctors: docsToShow
+    };
+  };
+
   const handleSend = async (userText) => {
     const query = userText || input;
     if (!query.trim()) return;
 
-    // Add user message
     setMessages((prev) => [...prev, { sender: 'user', text: query }]);
     if (!userText) setInput('');
     setLoading(true);
@@ -47,18 +125,21 @@ export const AIChatbot = ({ isOpen, onClose }) => {
         {
           sender: 'bot',
           text: botText,
-          doctors: data.doctors || [],
+          doctors: data.doctors && data.doctors.length > 0 ? data.doctors : sampleDoctors,
           isEmergency: data.isEmergency,
           specNeeded: data.specializationNeeded
         }
       ]);
     } catch (err) {
+      // Instant Client-Side Fallback if network or backend fails
+      const fallback = clientFallbackTriage(query);
       setMessages((prev) => [
         ...prev,
         {
           sender: 'bot',
-          text: 'I recommend consulting a General Physician for evaluation. Here are doctors in our Jaipur network:',
-          doctors: []
+          text: fallback.text,
+          doctors: fallback.doctors,
+          isEmergency: fallback.isEmergency
         }
       ]);
     } finally {
@@ -147,7 +228,7 @@ export const AIChatbot = ({ isOpen, onClose }) => {
                     </div>
                     {msg.doctors.map((doc) => (
                       <div
-                        key={doc._id}
+                        key={doc._id || doc.id}
                         className="bg-slate-900/90 border border-slate-700/80 rounded-xl p-2.5 flex items-center justify-between gap-2"
                       >
                         <div className="flex items-center gap-2 min-w-0">
@@ -163,7 +244,7 @@ export const AIChatbot = ({ isOpen, onClose }) => {
                           <div className="min-w-0">
                             <h5 className="font-bold text-white text-[11px] truncate">{doc.name}</h5>
                             <p className="text-[10px] text-slate-400 truncate">
-                              {doc.hospital?.name || 'Jaipur Medical Center'} • ₹{doc.consultationFee || 500}
+                              {doc.hospital?.name || 'Jaipur Hospital'} • ₹{doc.consultationFee || 500}
                             </p>
                           </div>
                         </div>

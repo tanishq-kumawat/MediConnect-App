@@ -10,8 +10,11 @@ export const SocketProvider = ({ children }) => {
   const { user } = useAuth();
 
   useEffect(() => {
-    // Connect to Socket.io server
-    const newSocket = io(window.location.origin, {
+    const socketUrl = import.meta.env.VITE_API_URL
+      ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '')
+      : window.location.origin;
+
+    const newSocket = io(socketUrl, {
       transports: ['websocket', 'polling']
     });
 
@@ -23,7 +26,7 @@ export const SocketProvider = ({ children }) => {
 
     newSocket.on('user_notification', (notif) => {
       console.log('🔔 Received Notification:', notif);
-      if (!notif.userId || (user && user._id === notif.userId)) {
+      if (!notif.userId || (user && (user._id === notif.userId || user.id === notif.userId))) {
         setNotifications((prev) => [
           { ...notif, id: Date.now() + Math.random() },
           ...prev.slice(0, 4)
@@ -37,7 +40,7 @@ export const SocketProvider = ({ children }) => {
   }, [user]);
 
   const removeNotification = (id) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    setNotifications((prev) => fontNotifs.filter((n) => n.id !== id));
   };
 
   return (

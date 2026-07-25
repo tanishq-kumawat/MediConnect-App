@@ -1,7 +1,15 @@
 import axios from 'axios';
 
+const getBaseURL = () => {
+  if (import.meta.env.VITE_API_URL) {
+    const url = import.meta.env.VITE_API_URL.replace(/\/$/, '');
+    return url.endsWith('/api') ? url : `${url}/api`;
+  }
+  return '/api';
+};
+
 const API = axios.create({
-  baseURL: '/api'
+  baseURL: getBaseURL()
 });
 
 API.interceptors.request.use((config) => {
@@ -20,6 +28,7 @@ export const authAPI = {
   register: (data) => API.post('/auth/register', data),
   sendOTP: (email) => API.post('/auth/send-otp', { email }),
   verifyOTP: (email, otpCode) => API.post('/auth/verify-otp', { email, otpCode }),
+  googleLogin: (data) => API.post('/auth/google-login', data),
   getProfile: () => API.get('/auth/profile'),
   addMedicalHistory: (data) => API.post('/auth/medical-history', data)
 };
