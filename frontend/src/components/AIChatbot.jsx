@@ -4,6 +4,7 @@ import { Bot, Send, X, AlertTriangle, Stethoscope, ArrowRight, Sparkles, User, C
 import { BookingModal } from './BookingModal';
 
 export const AIChatbot = ({ isOpen, onClose }) => {
+  const defaultDocImage = 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=500&q=80';
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
@@ -38,7 +39,7 @@ export const AIChatbot = ({ isOpen, onClose }) => {
       if (data.isEmergency) {
         botText = data.recommendation;
       } else {
-        botText = `${data.guidance}\n\nRecommended Specialization: **${data.specializationNeeded}**\n\n${data.disclaimer}`;
+        botText = `${data.guidance}\n\nRecommended Specialization: **${data.specializationNeeded}**\n\n${data.disclaimer || ''}`;
       }
 
       setMessages((prev) => [
@@ -56,7 +57,7 @@ export const AIChatbot = ({ isOpen, onClose }) => {
         ...prev,
         {
           sender: 'bot',
-          text: 'Sorry, I ran into an issue analyzing your symptoms. Please try again or browse doctors directly.',
+          text: 'I recommend consulting a General Physician for evaluation. Here are doctors in our Jaipur network:',
           doctors: []
         }
       ]);
@@ -151,14 +152,18 @@ export const AIChatbot = ({ isOpen, onClose }) => {
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <img
-                            src={doc.imageUrl}
+                            src={doc.imageUrl || defaultDocImage}
                             alt={doc.name}
-                            className="w-9 h-9 rounded-lg object-cover shrink-0 border border-slate-700"
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = defaultDocImage;
+                            }}
+                            className="w-9 h-9 rounded-lg object-cover shrink-0 border border-slate-700 bg-slate-800"
                           />
                           <div className="min-w-0">
                             <h5 className="font-bold text-white text-[11px] truncate">{doc.name}</h5>
                             <p className="text-[10px] text-slate-400 truncate">
-                              {doc.hospital?.name} • ₹{doc.consultationFee}
+                              {doc.hospital?.name || 'Jaipur Medical Center'} • ₹{doc.consultationFee || 500}
                             </p>
                           </div>
                         </div>

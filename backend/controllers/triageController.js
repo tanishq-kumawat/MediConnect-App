@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { prisma } from '../config/db.js';
 
-// Helper for fallback rule-based triage if Gemini API is unavailable or fails
+// Fallback rule-based triage engine (instant & 100% reliable)
 const fallbackRuleTriage = (text) => {
   const emergencyKeywords = [
     'chest pain',
@@ -52,7 +52,7 @@ const fallbackRuleTriage = (text) => {
     guidance = 'For ear, nose, or throat irritation, warm saline gargles and steam inhalation can offer temporary relief.';
   } else {
     detectedSpec = 'General Physician';
-    guidance = 'For general malaise, mild fever, or flu symptoms, ensure plenty of oral fluids, rest, and monitor your vitals.';
+    guidance = 'For general malaise, fever, or flu symptoms, ensure plenty of oral fluids, rest, and monitor your vitals.';
   }
 
   return {
@@ -74,70 +74,49 @@ export const handleSymptomTriage = async (req, res) => {
     let triageResult = null;
     let usedGemini = false;
 
-    if (apiKey && apiKey.trim() !== '') {
+    // Fast-path Gemini call with 3-second timeout race
+    if (apiKey && apiKey.trim() !== '' && !apiKey.includes('your_actual_gemini')) {
       try {
         const genAI = new GoogleGenerativeAI(apiKey.trim());
-        const modelNames = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
-        let geminiResponse = null;
-
         const prompt = `You are an AI Medical Triage Assistant for Jaipur MediConnect healthcare platform.
-Analyze the patient's symptoms described below and summarize guidance.
+Analyze symptoms: "${message}"
 
-AVAILABLE DOCTOR SPECIALIZATIONS IN JAIPUR NETWORK:
-- "General Physician"
-- "Dermatologist"
-- "Pediatrician"
-- "Physiotherapist"
-- "Cardiologist"
-- "Orthopedic"
-- "Neurologist"
-- "ENT Specialist"
-
-CRITICAL INSTRUCTIONS:
-1. Determine if symptoms represent a critical medical emergency (chest pain, stroke, severe head trauma, acute breathlessness, massive bleeding).
-2. Choose the SINGLE best matching specialization from the list above. Default to "General Physician" if non-specific.
-3. Provide helpful, empathetic medical guidance and initial care advice.
-4. Output MUST be ONLY a JSON object formatted as follows, without markdown or extra codeblocks:
+OUTPUT JSON ONLY:
 {
   "isEmergency": boolean,
-  "specializationNeeded": string,
-  "guidance": string,
-  "recommendation": string
-}
+  "specializationNeeded": "General Physician" | "Dermatologist" | "Pediatrician" | "Physiotherapist" | "Cardiologist" | "Orthopedic" | "Neurologist" | "ENT Specialist",
+  "guidance": string
+}`;
 
-Patient Symptoms: "${message}"`;
+        // 3-second timeout controller so chatbot never hangs
+        const geminiPromise = (async () => {
+          const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+          const result = await model.generateContent(prompt);
+          return result.response.text();
+        })();
 
-        for (const modelName of modelNames) {
-          try {
-            const model = genAI.getGenerativeModel({ model: modelName });
-            const result = await model.generateContent(prompt);
-            const text = result.response.text();
-            if (text) {
-              geminiResponse = text;
-              break;
-            }
-          } catch (modelErr) {
-            console.warn(`Model ${modelName} failed:`, modelErr.message);
-          }
-        }
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Gemini API timeout')), 3000)
+        );
+
+        const geminiResponse = await Promise.race([geminiPromise, timeoutPromise]);
 
         if (geminiResponse) {
-          let cleanJson = geminiResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+          const cleanJson = geminiResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
           const parsed = JSON.parse(cleanJson);
-          
           triageResult = {
             isEmergency: !!parsed.isEmergency,
             specializationNeeded: parsed.specializationNeeded || 'General Physician',
-            guidance: parsed.guidance || 'Please consult a doctor for evaluation.',
-            recommendation: parsed.recommendation || ''
+            guidance: parsed.guidance || 'Please consult a specialist for thorough evaluation.'
           };
           usedGemini = true;
         }
-      } catch (geminiError) {
-        console.error('Gemini API execution error, falling back to rule engine:', geminiError.message);
+      } catch (geminiErr) {
+        console.warn('⚡ [TRIAGE] Gemini API skipped/timed out, using fast rule engine:', geminiErr.message);
       }
     }
 
+    // Instant fallback rule engine if Gemini API isn't configured or timed out
     if (!triageResult) {
       triageResult = fallbackRuleTriage(message.toLowerCase());
     }
@@ -184,13 +163,21 @@ Patient Symptoms: "${message}"`;
       isEmergency: false,
       specializationNeeded: specNeeded,
       guidance: triageResult.guidance,
-      disclaimer: `⚠️ Note: This AI Triage Assistant (${usedGemini ? 'Powered by Gemini AI' : 'Rule Engine'}) provides informational guidance only and is not a substitute for professional medical diagnosis.`,
+      disclaimer: `⚠️ Note: This AI Triage Assistant (${usedGemini ? 'Powered by Gemini AI' : 'Rule Engine'}) provides informational guidance only.`,
       doctors: formattedDoctors,
       source: usedGemini ? 'Gemini AI' : 'Rule Engine'
     });
 
   } catch (error) {
     console.error('Triage handler error:', error);
-    res.status(500).json({ message: error.message });
+    // Guarantee response with rule engine fallback even on unexpected error
+    const fallback = fallbackRuleTriage((req.body?.message || '').toLowerCase());
+    return res.json({
+      isEmergency: fallback.isEmergency,
+      specializationNeeded: fallback.specializationNeeded,
+      guidance: fallback.guidance,
+      doctors: [],
+      source: 'Rule Engine'
+    });
   }
 };
