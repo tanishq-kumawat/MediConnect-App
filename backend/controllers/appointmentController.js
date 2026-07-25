@@ -1,4 +1,5 @@
 import { prisma } from '../config/db.js';
+import { sendBookingAlertToDoctor, sendConfirmationToPatient } from '../services/emailService.js';
 
 export const createAppointment = async (req, res) => {
   try {
@@ -42,6 +43,36 @@ export const createAppointment = async (req, res) => {
       doctor: { ...appointment.doctor, _id: appointment.doctor.id, hospital: { ...appointment.doctor.hospital, _id: appointment.doctor.hospital.id } },
       hospital: { ...appointment.hospital, _id: appointment.hospital.id }
     };
+
+    // 1. Emit Real-Time Socket.io Alert to Doctor's Portal Queue
+    if (req.io) {
+      req.io.emit('doctor_new_booking_request', {
+        doctorId: doctor.id,
+        appointmentId: appointment.id,
+        patientName: appointment.patient.name,
+        date,
+        timeslot,
+        type
+      });
+      req.io.emit('doctor_notification', {
+        doctorId: doctor.id,
+        title: 'New Appointment Booking Request',
+        message: `Patient ${appointment.patient.name} requested an appointment on ${date} at ${timeslot}. Please verify timeslot availability.`,
+        appointmentId: appointment.id
+      });
+    }
+
+    // 2. Dispatch Email Notification to Doctor
+    sendBookingAlertToDoctor({
+      doctorEmail: doctor.email,
+      doctorName: doctor.name,
+      patientName: appointment.patient.name,
+      date,
+      timeslot,
+      symptomsNotes,
+      hospitalName: doctor.hospital.name,
+      type
+    });
 
     res.status(201).json(formatted);
   } catch (error) {
@@ -117,7 +148,7 @@ export const updateAppointmentStatus = async (req, res) => {
       where: { id },
       data: { status },
       include: {
-        doctor: true,
+        doctor: { include: { hospital: true } },
         hospital: true,
         patient: { select: { id: true, name: true, email: true } }
       }
@@ -127,22 +158,38 @@ export const updateAppointmentStatus = async (req, res) => {
       ...updated,
       _id: updated.id,
       patient: { ...updated.patient, _id: updated.patient.id },
-      doctor: { ...updated.doctor, _id: updated.doctor.id },
+      doctor: { ...updated.doctor, _id: updated.doctor.id, hospital: { ...updated.doctor.hospital, _id: updated.doctor.hospital.id } },
       hospital: { ...updated.hospital, _id: updated.hospital.id }
     };
 
+    // 1. Emit Real-Time Socket.io Alert to Patient
     if (req.io) {
       req.io.to(`appointment_${id}`).emit('appointment_status_changed', {
         appointmentId: id,
         status: updated.status,
         updatedAt: updated.updatedAt
       });
-      req.io.emit('global_appointment_update', {
-        appointmentId: id,
-        patientId: updated.patientId,
-        status: updated.status
+      req.io.emit('user_notification', {
+        userId: updated.patientId,
+        title: status === 'Confirmed' ? 'Appointment Confirmed!' : `Appointment ${status}`,
+        message: status === 'Confirmed'
+          ? `Dr. ${updated.doctor.name} verified your timeslot and CONFIRMED your appointment on ${updated.date} at ${updated.timeslot}.`
+          : `Your appointment status with Dr. ${updated.doctor.name} is now: ${status}.`,
+        appointmentId: id
       });
     }
+
+    // 2. Dispatch Email Notification to Patient
+    sendConfirmationToPatient({
+      patientEmail: updated.patient.email,
+      patientName: updated.patient.name,
+      doctorName: updated.doctor.name,
+      hospitalName: updated.hospital.name,
+      date: updated.date,
+      timeslot: updated.timeslot,
+      status: updated.status,
+      type: updated.type
+    });
 
     res.json(formatted);
   } catch (error) {

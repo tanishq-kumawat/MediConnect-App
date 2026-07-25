@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { appointmentAPI, authAPI } from '../services/api';
 import { ConsultationRoom } from '../components/ConsultationRoom';
 import { PaymentModal } from '../components/PaymentModal';
-import { Calendar, Video, Clock, MapPin, Plus, FileText, CheckCircle2, AlertCircle, RefreshCw, Zap } from 'lucide-react';
+import { Calendar, Video, Clock, MapPin, Plus, FileText, CheckCircle2, AlertCircle, RefreshCw, Zap, Mail } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 
 export const PatientDashboard = () => {
@@ -63,15 +63,15 @@ export const PatientDashboard = () => {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'Confirmed':
-        return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
+        return { text: 'Confirmed by Doctor', class: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' };
       case 'Pending':
-        return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+        return { text: 'Awaiting Doctor Verification', class: 'bg-amber-500/20 text-amber-300 border-amber-500/30' };
       case 'Completed':
-        return 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30';
+        return { text: 'Completed', class: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' };
       case 'Cancelled':
-        return 'bg-red-500/20 text-red-400 border-red-500/30';
+        return { text: 'Declined (Slot Unavailable)', class: 'bg-red-500/20 text-red-400 border-red-500/30' };
       default:
-        return 'bg-slate-800 text-slate-300 border-slate-700';
+        return { text: status, class: 'bg-slate-800 text-slate-300 border-slate-700' };
     }
   };
 
@@ -117,78 +117,83 @@ export const PatientDashboard = () => {
             </div>
           ) : (
             <div className="space-y-4">
-              {appointments.map((app) => (
-                <div
-                  key={app._id}
-                  className="glass-card rounded-2xl p-5 border border-slate-800 space-y-4 hover:border-slate-700 transition-all"
-                >
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
-                    <div className="flex items-center gap-3">
-                      <img
-                        src={app.doctor?.imageUrl || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=500&q=80'}
-                        alt={app.doctor?.name}
-                        className="w-12 h-12 rounded-xl object-cover border border-slate-700"
-                      />
-                      <div>
-                        <h3 className="text-sm font-bold text-white">Dr. {app.doctor?.name}</h3>
-                        <p className="text-xs text-teal-400 font-medium">{app.doctor?.specialization}</p>
-                        <p className="text-[11px] text-slate-400">{app.hospital?.name} (Jaipur)</p>
+              {appointments.map((app) => {
+                const badge = getStatusBadge(app.status);
+                const appId = app._id || app.id;
+
+                return (
+                  <div
+                    key={appId}
+                    className="glass-card rounded-2xl p-5 border border-slate-800 space-y-4 hover:border-slate-700 transition-all"
+                  >
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={app.doctor?.imageUrl || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=500&q=80'}
+                          alt={app.doctor?.name}
+                          className="w-12 h-12 rounded-xl object-cover border border-slate-700"
+                        />
+                        <div>
+                          <h3 className="text-sm font-bold text-white">Dr. {app.doctor?.name}</h3>
+                          <p className="text-xs text-teal-400 font-medium">{app.doctor?.specialization}</p>
+                          <p className="text-[11px] text-slate-400">{app.hospital?.name} (Jaipur)</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className={`px-3 py-1 text-xs font-bold rounded-full border ${badge.class}`}>
+                          {badge.text}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <span className={`px-3 py-1 text-xs font-bold rounded-full border ${getStatusBadge(app.status)}`}>
-                        {app.status}
-                      </span>
+                    {/* Schedule Details Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-mono">Date</span>
+                        <span className="font-bold text-white">{app.date}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-mono">Timeslot</span>
+                        <span className="font-bold text-slate-200">{app.timeslot}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-mono">Type</span>
+                        <span className="font-bold text-cyan-300">{app.type}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-mono">Payment</span>
+                        <span className={`font-bold ${app.feePaid ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {app.feePaid ? 'Paid (₹' + app.feeAmount + ')' : 'Pending'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Action Bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                      {app.type === 'Online' && (app.status === 'Confirmed' || app.status === 'Pending') ? (
+                        <button
+                          onClick={() => setActiveConsultationId(appId)}
+                          className="px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all hover:scale-105"
+                        >
+                          <Video className="w-4 h-4" /> Launch Consultation Room
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-400 font-medium">In-Person Hospital OPD Appointment</span>
+                      )}
+
+                      {!app.feePaid && app.status !== 'Cancelled' && (
+                        <button
+                          onClick={() => setSelectedAppointmentForPay(app)}
+                          className="px-3.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5"
+                        >
+                          <Zap className="w-3.5 h-3.5 text-amber-400" /> Pay Fee & Confirm
+                        </button>
+                      )}
                     </div>
                   </div>
-
-                  {/* Schedule Details Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-mono">Date</span>
-                      <span className="font-bold text-white">{app.date}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-mono">Timeslot</span>
-                      <span className="font-bold text-slate-200">{app.timeslot}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-mono">Type</span>
-                      <span className="font-bold text-cyan-300">{app.type}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-mono">Payment</span>
-                      <span className={`font-bold ${app.feePaid ? 'text-emerald-400' : 'text-amber-400'}`}>
-                        {app.feePaid ? 'Paid (₹' + app.feeAmount + ')' : 'Pending'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Action Bar */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                    {app.type === 'Online' && (app.status === 'Confirmed' || app.status === 'Pending') ? (
-                      <button
-                        onClick={() => setActiveConsultationId(app._id)}
-                        className="px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all hover:scale-105"
-                      >
-                        <Video className="w-4 h-4" /> Launch Consultation Room
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-400 font-medium">In-Person Hospital OPD Appointment</span>
-                    )}
-
-                    {!app.feePaid && app.status !== 'Cancelled' && (
-                      <button
-                        onClick={() => setSelectedAppointmentForPay(app)}
-                        className="px-3.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5"
-                      >
-                        <Zap className="w-3.5 h-3.5 text-amber-400" /> Pay Fee & Confirm
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -200,7 +205,6 @@ export const PatientDashboard = () => {
               <FileText className="w-4 h-4 text-teal-400" /> Medical History & Allergies
             </h3>
 
-            {/* List */}
             <div className="space-y-2 text-xs">
               {medicalHistory.length === 0 ? (
                 <p className="text-slate-500">No medical history records logged yet.</p>
@@ -217,7 +221,6 @@ export const PatientDashboard = () => {
               )}
             </div>
 
-            {/* Add New Record Form */}
             <form onSubmit={handleAddMedicalHistory} className="pt-3 border-t border-slate-800 space-y-3">
               <span className="text-xs font-bold text-slate-300 block">Add Medical Record</span>
               <input
