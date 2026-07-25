@@ -78,6 +78,134 @@ export const loginUser = async (req, res) => {
   }
 };
 
+export const sendOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: 'Email address is required for OTP dispatch' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() }
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'No account registered with this email' });
+    }
+
+    const generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        otpCode: generatedOTP,
+        otpExpiresAt: expiresAt
+      }
+    });
+
+    console.log(`🔑 [SECURITY 2FA OTP] Dispatched to ${email}: ${generatedOTP}`);
+
+    res.json({
+      success: true,
+      message: `6-digit security OTP code dispatched to ${email}.`,
+      demoOtpCode: generatedOTP
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const verifyOTP = async (req, res) => {
+  try {
+    const { email, otpCode } = req.body;
+    if (!email || !otpCode) {
+      return res.status(400).json({ message: 'Email and OTP code are required' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() }
+    });
+
+    if (!user || !user.otpCode) {
+      return res.status(400).json({ message: 'Invalid OTP request. Please request a new OTP.' });
+    }
+
+    if (user.otpExpiresAt && new Date() > new Date(user.otpExpiresAt)) {
+      return res.status(400).json({ message: 'OTP code expired. Please request a new code.' });
+    }
+
+    if (user.otpCode !== otpCode.toString().trim()) {
+      return res.status(400).json({ message: 'Incorrect OTP code. Please check and try again.' });
+    }
+
+    const verifiedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        otpCode: null,
+        otpExpiresAt: null,
+        isPhoneVerified: true
+      }
+    });
+
+    res.json({
+      _id: verifiedUser.id,
+      id: verifiedUser.id,
+      name: verifiedUser.name,
+      email: verifiedUser.email,
+      role: verifiedUser.role,
+      phone: verifiedUser.phone,
+      medicalHistory: verifiedUser.medicalHistory,
+      token: generateToken(verifiedUser.id)
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const googleLogin = async (req, res) => {
+  try {
+    const { email, name, googleId } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: 'Google email is required' });
+    }
+
+    let user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() }
+    });
+
+    if (!user) {
+      const randomPassword = await bcrypt.hash(googleId || 'google_oauth_secret_2026', 10);
+      user = await prisma.user.create({
+        data: {
+          name: name || email.split('@')[0],
+          email: email.toLowerCase(),
+          password: randomPassword,
+          role: 'patient',
+          isPhoneVerified: true,
+          medicalHistory: []
+        }
+      });
+      console.log(`🌐 [GOOGLE OAUTH] New account registered via Google: ${email}`);
+    } else {
+      console.log(`🌐 [GOOGLE OAUTH] User authenticated via Google: ${email}`);
+    }
+
+    res.json({
+      _id: user.id,
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      phone: user.phone,
+      medicalHistory: user.medicalHistory,
+      token: generateToken(user.id)
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 export const getUserProfile = async (req, res) => {
   try {
     const userId = req.user._id || req.user.id;
@@ -90,6 +218,7 @@ export const getUserProfile = async (req, res) => {
         phone: true,
         role: true,
         medicalHistory: true,
+        isPhoneVerified: true,
         createdAt: true,
         updatedAt: true
       }

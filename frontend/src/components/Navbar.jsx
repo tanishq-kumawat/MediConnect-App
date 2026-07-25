@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Stethoscope, User, LogOut, Calendar, Building2, Bot } from 'lucide-react';
+import { Stethoscope, User, LogOut, Calendar, Building2, Bot, ShieldAlert, FileText } from 'lucide-react';
 
 export const Navbar = ({ onOpenTriage }) => {
   const { user, logout } = useAuth();
@@ -16,7 +16,7 @@ export const Navbar = ({ onOpenTriage }) => {
   const isActive = (path) => location.pathname === path;
 
   return (
-    <header className="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-md border-b border-slate-800">
+    <header className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Brand Logo */}
         <Link to="/" className="flex items-center gap-2.5 group">
@@ -65,11 +65,18 @@ export const Navbar = ({ onOpenTriage }) => {
           >
             Jaipur Hospitals
           </Link>
+          <a
+            href="http://localhost:5000/api-docs"
+            target="_blank"
+            rel="noreferrer"
+            className="px-3.5 py-1.5 rounded-full text-xs font-semibold text-cyan-400 hover:text-cyan-300 hover:bg-slate-700/50 transition-all flex items-center gap-1"
+          >
+            <FileText className="w-3.5 h-3.5" /> Swagger Docs
+          </a>
         </nav>
 
         {/* Action Buttons & Auth */}
         <div className="flex items-center gap-3">
-          {/* AI Symptom Bot Quick Launcher */}
           <button
             onClick={onOpenTriage}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-lg text-xs font-semibold transition-all"
@@ -80,13 +87,23 @@ export const Navbar = ({ onOpenTriage }) => {
 
           {user ? (
             <div className="flex items-center gap-2">
-              <Link
-                to={user.role === 'doctor' ? '/doctor-dashboard' : '/dashboard'}
-                className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-teal-400 border border-slate-700 rounded-lg text-xs font-semibold transition-all"
-              >
-                <Calendar className="w-4 h-4" />
-                <span>{user.role === 'doctor' ? 'Doctor Portal' : 'My Appointments'}</span>
-              </Link>
+              {user.role === 'admin' ? (
+                <Link
+                  to="/admin"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-bold transition-all"
+                >
+                  <ShieldAlert className="w-4 h-4 text-amber-400" />
+                  <span>Admin Panel</span>
+                </Link>
+              ) : (
+                <Link
+                  to={user.role === 'doctor' ? '/doctor-dashboard' : '/dashboard'}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-teal-400 border border-slate-700 rounded-lg text-xs font-semibold transition-all"
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>{user.role === 'doctor' ? 'Doctor Portal' : 'My Appointments'}</span>
+                </Link>
+              )}
 
               <button
                 onClick={handleLogout}

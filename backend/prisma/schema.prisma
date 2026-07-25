@@ -14,16 +14,19 @@ enum Role {
 }
 
 model User {
-  id             String        @id @default(uuid())
-  name           String
-  email          String        @unique
-  password       String
-  phone          String        @default("")
-  role           Role          @default(patient)
-  medicalHistory Json          @default("[]")
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  appointments   Appointment[]
+  id              String        @id @default(uuid())
+  name            String
+  email           String        @unique
+  password        String
+  phone           String        @default("")
+  role            Role          @default(patient)
+  medicalHistory  Json          @default("[]")
+  otpCode         String?
+  otpExpiresAt    DateTime?
+  isPhoneVerified Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  appointments    Appointment[]
 }
 
 model Hospital {

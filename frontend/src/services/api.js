@@ -18,6 +18,8 @@ API.interceptors.request.use((config) => {
 export const authAPI = {
   login: (data) => API.post('/auth/login', data),
   register: (data) => API.post('/auth/register', data),
+  sendOTP: (email) => API.post('/auth/send-otp', { email }),
+  verifyOTP: (email, otpCode) => API.post('/auth/verify-otp', { email, otpCode }),
   getProfile: () => API.get('/auth/profile'),
   addMedicalHistory: (data) => API.post('/auth/medical-history', data)
 };
@@ -39,6 +41,13 @@ export const appointmentAPI = {
   getDoctorAppointments: (doctorId) => API.get(`/appointments/doctor/${doctorId}`),
   updateStatus: (id, status) => API.patch(`/appointments/${id}/status`, { status }),
   getById: (id) => API.get(`/appointments/${id}`)
+};
+
+export const adminAPI = {
+  getStats: () => API.get('/admin/stats'),
+  createDoctor: (data) => API.post('/admin/doctors', data),
+  deleteDoctor: (id) => API.delete(`/admin/doctors/${id}`),
+  createHospital: (data) => API.post('/admin/hospitals', data)
 };
 
 export const triageAPI = {

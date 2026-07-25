@@ -17,7 +17,7 @@ export const seedDatabase = async () => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash('password123', salt);
 
-    // Create Test Patient & Doctor User Accounts
+    // Create Test Patient, Doctor & Admin User Accounts
     const patientUser = await prisma.user.create({
       data: {
         name: 'Rahul Sharma',
@@ -25,6 +25,7 @@ export const seedDatabase = async () => {
         password: hashedPassword,
         phone: '+91 98290 12345',
         role: 'patient',
+        isPhoneVerified: true,
         medicalHistory: [
           { condition: 'Mild Asthma', diagnosedDate: '2023-04-12', notes: 'Uses inhaler as needed' },
           { condition: 'Dust Allergy', diagnosedDate: '2021-08-20', notes: 'Seasonal flare ups' }
@@ -38,9 +39,23 @@ export const seedDatabase = async () => {
         email: 'doctor@jaipurmed.com',
         password: hashedPassword,
         phone: '+91 98290 99999',
-        role: 'doctor'
+        role: 'doctor',
+        isPhoneVerified: true
       }
     });
+
+    const adminUser = await prisma.user.create({
+      data: {
+        name: 'System Administrator',
+        email: 'admin@jaipurmed.com',
+        password: hashedPassword,
+        phone: '+91 98290 00000',
+        role: 'admin',
+        isPhoneVerified: true
+      }
+    });
+
+    console.log(`✅ Seeded Admin Account: admin@jaipurmed.com (Password: password123)`);
 
     // 1. Seed Hospitals in Jaipur
     const hospitalsData = [

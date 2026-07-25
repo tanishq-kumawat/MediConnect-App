@@ -13,6 +13,7 @@ import { DoctorsPage } from './pages/DoctorsPage';
 import { HospitalsPage } from './pages/HospitalsPage';
 import { PatientDashboard } from './pages/PatientDashboard';
 import { DoctorDashboard } from './pages/DoctorDashboard';
+import { AdminDashboard } from './pages/AdminDashboard';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 
@@ -34,6 +35,7 @@ export function App() {
                 <Route path="/hospitals" element={<HospitalsPage />} />
                 <Route path="/dashboard" element={<PatientDashboard />} />
                 <Route path="/doctor-dashboard" element={<DoctorDashboard />} />
+                <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
               </Routes>
